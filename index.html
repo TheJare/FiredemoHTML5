@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html> <!-- manifest="cache.manifest">-->
+<head>
+    <title>Firedemo reprise</title>
+    <meta name="apple-mobile-web-app-capable" content="yes"/>
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+    <style type="text/css">
+        body { background-color:black; color:white;}
+        .interactive { -webkit-tap-highlight-color: rgba(0,0,0,0); }
+        .fullscreen { position:absolute; bottom:0; left:0; display: block; padding: 0; border: 0; margin: 0; overflow: hidden; width:100%; height:100%; }
+    </style>
+</head>
+<body class="fullscreen">
+    <canvas id="canvas" class="fullscreen interactive"></canvas>
+<script>
+
+// This is a direct port of my old Firedemo effect
+// Made to celebrate the 20th anniversary :)
+// (C) 2013 by Javier Arevalo
+// This code is released under the MIT license.
+
+// Select a fast numeric array where available. (from Tojiro's gl-matrix)
+var MAT_TYPE = (typeof Float32Array !== 'undefined') ? Float32Array : Array;
+
+var FirePalette = (function() {
+    // The original hand-rolled palette
+    var pal = [
+          0,   0,   0,   0,   1,   1,   0,   4,   5,   0,   7,   9,
+          0,   8,  11,   0,   9,  12,  15,   6,   8,  25,   4,   4,
+         33,   3,   3,  40,   2,   2,  48,   2,   2,  55,   1,   1,
+         63,   0,   0,  63,   0,   0,  63,   3,   0,  63,   7,   0,
+         63,  10,   0,  63,  13,   0,  63,  16,   0,  63,  20,   0,
+         63,  23,   0,  63,  26,   0,  63,  29,   0,  63,  33,   0,
+         63,  36,   0,  63,  39,   0,  63,  39,   0,  63,  40,   0,
+         63,  40,   0,  63,  41,   0,  63,  42,   0,  63,  42,   0,
+         63,  43,   0,  63,  44,   0,  63,  44,   0,  63,  45,   0,
+         63,  45,   0,  63,  46,   0,  63,  47,   0,  63,  47,   0,
+         63,  48,   0,  63,  49,   0,  63,  49,   0,  63,  50,   0,
+         63,  51,   0,  63,  51,   0,  63,  52,   0,  63,  53,   0,
+         63,  53,   0,  63,  54,   0,  63,  55,   0,  63,  55,   0,
+         63,  56,   0,  63,  57,   0,  63,  57,   0,  63,  58,   0,
+         63,  58,   0,  63,  59,   0,  63,  60,   0,  63,  60,   0,
+         63,  61,   0,  63,  62,   0,  63,  62,   0,  63,  63,   0];
+    var realPalette = new MAT_TYPE(256*3);
+    var i = 0;
+    for (; i < pal.length; ++i) {
+        realPalette[i] = Math.floor(pal[i]*255/63);
+    }
+    // Fill the upper 192 entries with pure white
+    for (; i < realPalette.length; ++i) {
+        realPalette[i] = 255;
+    }
+    return realPalette;
+})();
+
+var Fire = function() {
+    this.w = 80;
+    this.h = 50;
+    this.Reset();
+}
+
+Fire.prototype.Reset = function() {
+    var s = this.w*this.h;
+    function makeBuf() {
+        var g = new MAT_TYPE(s);
+        for (var j = 0; j < s; ++j) {
+            g[j] = 0;
+        }
+        return g;
+    }
+    this.backbuffer = makeBuf();
+    this.tempbuffer = makeBuf();
+}
+
+Fire.prototype.tick = function() {
+    var src = this.backbuffer;
+    var temp = this.tempbuffer;
+    var w = this.w;
+    var h = this.h;
+ 
+    // Transform backbuffer spreading the heat, cooling down and randomly creating sparks below
+    var max = w*(h-1)-1;
+    var coolmax = w*(h-4);
+    for (var i = w+1; i < max; ++i) {
+        // Average neighbours - this spreads the heat
+        var v = src[i-1-w] + src[i-w] + src[i+1-w] + src[i-1] + src[i+1] + src[i-1+w] + src[i+w] + src[i+1+w];
+        var finalv = Math.floor(v/8);
+        // 25% of cells in a more or less random selection will be cooled
+        var bcool = v & 3;
+        // We cool cells only if they are not zero already - *except* in the lower lines of the buffer
+        // Cooling zero pixels in the lower area will 'wrap around' into random hot pixels
+        // Incidentally, in the beginning all pixels wrap, meaning a big explosion
+        if (!bcool && (i >= coolmax || finalv > 0)) {
+            finalv = (255+finalv) % 256;
+        }
+        temp[i] = finalv;
+    }
+    // Scroll up & copy back the results
+    max = w*(h-2);
+    for (var x = 0; x < max; ++x) {
+        src[x] = temp[x+w];
+    }
+    // Smooth bottom rows - just for rendering
+    max = w*(h-1);
+    for (var x = w*(h-6); x < max; ++x) {
+        if (temp[x] < 15)
+            temp[x] = (255-temp[x] + 22) % 256;
+    }
+}
+
+Fire.prototype.render = function(dest, offset) {
+    var s = this.w*(this.h-offset);
+    var g = this.tempbuffer;
+    for (var j = 0, i = 0; j < s; ++j, i += 4) {
+        dest[i  ] = FirePalette[g[j]*3  ];
+        dest[i+1] = FirePalette[g[j]*3+1];
+        dest[i+2] = FirePalette[g[j]*3+2];
+        dest[i+3] = 255;
+    }
+}
+
+// Helper to provides requestAnimationFrame in a cross browser way.
+// http://paulirish.com/2011/requestanimationframe-for-smart-animating/
+if ( !window.requestAnimationFrame ) {
+    window.requestAnimationFrame = ( function() {
+        return window.webkitRequestAnimationFrame ||
+        window.mozRequestAnimationFrame ||
+        window.oRequestAnimationFrame ||
+        window.msRequestAnimationFrame ||
+        function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
+            window.setTimeout( callback, 1000 / 60 );
+        };
+    } )();
+}
+
+window.onload = function() {
+    var fire = new Fire();
+    var offset = 2; // Skip the bottom 2 lines when blitting to screen - too noisy and ugly
+
+    var canvas = document.getElementById("canvas");
+    var ctx = canvas.getContext("2d");
+    canvas.width = fire.w;
+    canvas.height = fire.h - offset;
+
+    // Resizing support
+    function resizeCanvas() {
+        var wr = document.body.clientWidth/document.body.clientHeight;
+        var fr = fire.w/fire.h;
+        if (wr < fr) {
+            canvas.style.width = document.body.clientWidth+"px";
+            canvas.style.height = Math.floor(document.body.clientWidth/fr)+"px";
+        } else {
+            canvas.style.height = document.body.clientHeight+"px";
+            canvas.style.width = Math.floor(document.body.clientHeight*fr)+"px";
+        }
+    }
+    window.addEventListener("resize", resizeCanvas);
+    document.addEventListener("orientationChanged", resizeCanvas);
+    resizeCanvas();
+    // Prevent panning & make canvas clickable
+    document.addEventListener("touchmove", function(e) {e.preventDefault();})
+
+    var id = ctx.createImageData(canvas.width, canvas.height);
+
+    // Main loop
+    var tick = function() {
+        fire.tick();
+        fire.render(id.data, offset);
+        ctx.putImageData(id, 0, 0);
+        requestAnimationFrame(tick);
+    }
+    tick(); // Go!
+}
+
+</script>
+</body>
+</html>
