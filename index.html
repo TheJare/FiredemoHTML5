@@ -103,19 +103,21 @@ Fire.prototype.tick = function() {
     }
     // Smooth bottom rows - just for rendering
     max = w*(h-1);
-    for (var x = w*(h-6); x < max; ++x) {
+    for (var x = w*(h-7); x < max; ++x) {
         if (temp[x] < 15)
-            temp[x] = (255-temp[x] + 22) % 256;
+            temp[x] = (256-temp[x] + 22) % 256;
     }
 }
 
-Fire.prototype.render = function(dest, offset) {
-    var s = this.w*(this.h-offset);
+Fire.prototype.render = function(dest) {
+    // Scroll up & render the results. The last row is blank and can be skipped.
+    var s = this.w*(this.h-2);
+    var w = this.w;
     var g = this.tempbuffer;
     for (var j = 0, i = 0; j < s; ++j, i += 4) {
-        dest[i  ] = FirePalette[g[j]*3  ];
-        dest[i+1] = FirePalette[g[j]*3+1];
-        dest[i+2] = FirePalette[g[j]*3+2];
+        dest[i  ] = FirePalette[g[j + w]*3  ];
+        dest[i+1] = FirePalette[g[j + w]*3+1];
+        dest[i+2] = FirePalette[g[j + w]*3+2];
         dest[i+3] = 255;
     }
 }
@@ -136,12 +138,11 @@ if ( !window.requestAnimationFrame ) {
 
 window.onload = function() {
     var fire = new Fire();
-    var offset = 2; // Skip the bottom 2 lines when blitting to screen - too noisy and ugly
 
     var canvas = document.getElementById("canvas");
     var ctx = canvas.getContext("2d");
     canvas.width = fire.w;
-    canvas.height = fire.h - offset;
+    canvas.height = fire.h - 2; // The two bottom lines are empty.
 
     // Resizing support
     function resizeCanvas() {
@@ -166,7 +167,7 @@ window.onload = function() {
     // Main loop
     var tick = function() {
         fire.tick();
-        fire.render(id.data, offset);
+        fire.render(id.data);
         ctx.putImageData(id, 0, 0);
         requestAnimationFrame(tick);
     }
